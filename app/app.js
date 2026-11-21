@@ -1914,4 +1914,22 @@ function showAura(target) {
   sync();
 }
 
+/* ---------- Netlify のバッジと重ならないようにする ---------- */
+// 無料プランでは、画面の右下に「Powered by Netlify」のバッジが出る。
+// バッジがあるあいだだけ、アプリの下にその分のすき間をあけて、タブや入力欄と重ならないようにする。
+function watchHostBadge() {
+  const root = document.documentElement;
+  const update = () => {
+    const el = document.getElementById("nl-badge-frame");
+    const r = el ? el.getBoundingClientRect() : null;
+    const visible = r && r.height > 0 && r.width > 0 && getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden";
+    const space = visible ? Math.max(0, Math.round(window.innerHeight - r.top)) : 0;
+    root.style.setProperty("--host-badge-space", space + "px");
+  };
+  new MutationObserver(update).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
+  window.addEventListener("resize", update);
+  update();
+}
+
+watchHostBadge();
 boot();

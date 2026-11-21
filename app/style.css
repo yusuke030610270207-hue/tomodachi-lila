@@ -26,13 +26,13 @@ body {
 button { font: inherit; color: inherit; border: 0; background: transparent; padding: 0; cursor: pointer; }
 input { font: inherit; color: var(--ink); }
 
-#app { height: 100dvh; }
+#app { height: calc(100dvh - var(--host-badge-space, 0px)); }
 
 .screen {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: 100%;
   max-width: 520px;
   margin: 0 auto;
   overflow: hidden;
