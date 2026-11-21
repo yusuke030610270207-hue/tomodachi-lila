@@ -1,0 +1,8 @@
+# Netlify の設定: app フォルダをそのまま公開します(ビルドは不要)
+[build]
+  publish = "app"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
