@@ -50,7 +50,7 @@ function mulberry32(seed) {
   };
 }
 
-function paintBase(ctx) {
+export function paintBase(ctx) {
   const g = ctx.createLinearGradient(0, 0, SIZE, SIZE);
   g.addColorStop(0, "#fff4f9");
   g.addColorStop(1, "#eee6ff");
@@ -58,7 +58,7 @@ function paintBase(ctx) {
   ctx.fillRect(0, 0, SIZE, SIZE);
 }
 
-function glow(ctx, x, y, r, hex, a) {
+export function glow(ctx, x, y, r, hex, a) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, rgba(hex, a));
   g.addColorStop(0.55, rgba(hex, a * 0.45));
@@ -69,7 +69,7 @@ function glow(ctx, x, y, r, hex, a) {
   ctx.fill();
 }
 
-function sparkle(ctx, x, y, r, a) {
+export function sparkle(ctx, x, y, r, a) {
   glow(ctx, x, y, r * 2.2, "#ffffff", a * 0.7);
   ctx.save();
   ctx.strokeStyle = `rgba(255,255,255,${a})`;
