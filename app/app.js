@@ -3,7 +3,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from "./config.js";
 import { EMOJIS, createStrokeEditor, renderEmojiAura } from "./aura.js";
 
-const APP_VERSION = "1.4(リラのロゴ)";
+const APP_VERSION = "1.5(パスワードの再設定)";
 
 const app = document.getElementById("app");
 const configured = /^https:\/\/[^\s]+\.supabase\.co/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
@@ -126,6 +126,9 @@ function jpError(err) {
   if (/signups? not allowed|signup is disabled/i.test(m)) return "いまは新しい登録を受け付けていません";
   if (/rate limit/i.test(m)) return "短い時間に何度も試したようです。少し待ってからもう一度どうぞ";
   if (/Failed to fetch|NetworkError|network/i.test(m)) return "通信できませんでした。電波のよいところでもう一度どうぞ";
+  if (/not authorized|email_address_not_authorized/i.test(m)) return "いまはメールを送れない設定です。管理している人に連絡してください";
+  if (/over_email_send_rate_limit|email rate limit/i.test(m)) return "メールを送る回数の上限に達しました。しばらく待ってからもう一度どうぞ";
+  if (/same.*password|should be different/i.test(m)) return "前と同じパスワードは使えません";
   return m;
 }
 
@@ -147,18 +150,43 @@ function showSetupNeeded() {
         h("p", {}, "手順は SETUP.md の「5」に書いてあります。貼り終えたら、このページを開き直してください。")))));
 }
 
+// パスワード再設定のメールから開いたときの、URLの中身を読む
+function readAuthLink() {
+  const raw = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+  if (!/(access_token|error_description)=/.test(raw)) return { recovery: false, error: "" };
+  const q = new URLSearchParams(raw);
+  const err = q.get("error_code") === "otp_expired"
+    ? "メールのリンクの期限が切れています。もう一度「パスワードを忘れた方はこちら」からどうぞ"
+    : (q.get("error_description") || "").replace(/\+/g, " ");
+  return { recovery: q.get("type") === "recovery", error: err };
+}
+
+function clearAuthLink() {
+  if (/(access_token|error_description)=/.test(location.hash)) {
+    history.replaceState(null, "", location.pathname + location.search + "#/");
+  }
+}
+
 async function boot() {
   if (!configured) return showSetupNeeded();
 
+  const link = readAuthLink();
+  S.recovering = link.recovery;
+  S.linkError = link.error;
+
   supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" },
   });
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "PASSWORD_RECOVERY") {
+      S.recovering = true;
+      if (S.me) setTimeout(route, 0);
+    }
     const id = session && session.user ? session.user.id : null;
     if (id === S.userId) return; // 更新(トークンの再取得など)のときは何もしない
     S.userId = id;
@@ -185,7 +213,10 @@ async function onUserChange() {
   if (!S.userId) {
     S.view = null;
     clearBadge();
-    return showAuth("login");
+    clearAuthLink();
+    const msg = S.linkError;
+    S.linkError = "";
+    return showAuth("login", msg);
   }
 
   try {
@@ -368,14 +399,17 @@ async function refreshAll() {
 
 function route() {
   if (!S.me) return;
+  clearAuthLink();
   S.nav += 1;
   S.chat = null;
+  if (S.recovering) return showNewPassword(true);
   const parts = (location.hash || "#/").split("/");
   const a = parts[1];
   const b = parts[2];
   if (a === "chat" && b) return showChat(b);
   if (a === "aura" && b) return showAura(b);
   if (a === "new") return showNew();
+  if (a === "password") return showNewPassword(false);
   if (a === "settings") return showSettings();
   return showList();
 }
@@ -446,7 +480,89 @@ function showAuth(mode = "login", msg = "") {
       logo(),
       form,
       h("button", { class: "link", type: "button", onclick: () => showAuth(isSignup ? "login" : "signup") },
-        isSignup ? "すでに登録している方はこちら" : "はじめての方はこちら"))));
+        isSignup ? "すでに登録している方はこちら" : "はじめての方はこちら"),
+      isSignup ? null : h("button", { class: "link sub", type: "button", onclick: () => showForgot(email.value.trim()) },
+        "パスワードを忘れた方はこちら"))));
+}
+
+/* ---------- パスワードを忘れたとき ---------- */
+
+function showForgot(prefill = "") {
+  S.view = { name: "forgot" };
+  const email = h("input", { type: "email", placeholder: "登録したメールアドレス", autocomplete: "email", required: true, value: prefill });
+  const note = h("div", { class: "note", role: "alert" });
+  const btn = h("button", { class: "primary", type: "submit" }, "再設定のメールを送る");
+  const form = h("form", {
+    class: "auth-form",
+    onsubmit: async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      note.textContent = "";
+      try {
+        const redirectTo = location.origin + location.pathname;
+        const { error } = await supabase.auth.resetPasswordForEmail(email.value.trim(), { redirectTo });
+        if (error) throw error;
+        form.replaceChildren(h("div", { class: "panel" },
+          h("p", {}, "メールを送りました。メールの中のリンクを開くと、新しいパスワードを決められます。"),
+          h("p", {}, "届かないときは、迷惑メールのフォルダも見てください。")));
+      } catch (err) {
+        note.textContent = jpError(err);
+        btn.disabled = false;
+      }
+    },
+  }, h("p", { class: "lead" }, "登録したメールアドレスに、パスワードを決め直すためのリンクを送ります。"), email, note, btn);
+
+  setScreen(h("div", { class: "screen" },
+    h("div", { class: "auth" },
+      logo(),
+      h("h2", { class: "auth-title" }, "パスワードを忘れた方"),
+      form,
+      h("button", { class: "link", type: "button", onclick: () => showAuth("login") }, "ログインにもどる"))));
+}
+
+/* ---------- 新しいパスワードを決める ---------- */
+
+function showNewPassword(fromMail) {
+  S.view = { name: "password" };
+  const pass = h("input", { type: "password", placeholder: "新しいパスワード(6文字以上)", required: true, minLength: 6, autocomplete: "new-password" });
+  const again = h("input", { type: "password", placeholder: "もう一度入力", required: true, minLength: 6, autocomplete: "new-password" });
+  const note = h("div", { class: "note", role: "alert" });
+  const btn = h("button", { class: "primary", type: "submit" }, "このパスワードにする");
+  const done = () => {
+    S.recovering = false;
+    location.hash = "#/";
+    route();
+  };
+  const form = h("form", {
+    class: "auth-form",
+    onsubmit: async (e) => {
+      e.preventDefault();
+      note.textContent = "";
+      if (pass.value !== again.value) {
+        note.textContent = "2つのパスワードがちがいます";
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const { error } = await supabase.auth.updateUser({ password: pass.value });
+        if (error) throw error;
+        toast("新しいパスワードにしました");
+        done();
+      } catch (err) {
+        note.textContent = jpError(err);
+        btn.disabled = false;
+      }
+    },
+  }, h("p", { class: "lead" }, fromMail
+    ? "新しいパスワードを決めてください。次からは、このパスワードでログインします。"
+    : "いまのパスワードの代わりに使う、新しいパスワードを決めます。"), pass, again, note, btn);
+
+  setScreen(h("div", { class: "screen" },
+    h("div", { class: "auth" },
+      logo(),
+      h("h2", { class: "auth-title" }, "新しいパスワード"),
+      form,
+      h("button", { class: "link", type: "button", onclick: done }, fromMail ? "あとで決める" : "もどる"))));
 }
 
 /* ---------- トーク一覧 ---------- */
@@ -964,6 +1080,9 @@ function showSettings() {
         h("div", { class: "me-head" }, avatar(S.me, 64), h("div", { class: "em" }, S.me.email)),
         h("div", { class: "field" }, h("h3", {}, "表示する名前"), nameIn),
         saveBtn),
+      h("div", { class: "panel" },
+        h("h3", {}, "パスワード"),
+        h("button", { class: "secondary", type: "button", onclick: () => { location.hash = "#/password"; } }, "パスワードを変える")),
       pushPanel,
       badgePanel,
       h("div", { class: "panel" },
