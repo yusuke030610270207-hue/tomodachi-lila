@@ -1,9 +1,9 @@
-// 高次元SNS ステップ1: 最小のトーク(ログイン / 1対1 / 文章と画像 / 通知)
+// 高次元SNS リラ ステップ1: 最小のトーク(ログイン / 1対1 / 文章と画像 / 通知)
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from "./config.js";
 import { EMOJIS, createStrokeEditor, renderEmojiAura } from "./aura.js";
 
-const APP_VERSION = "1.3(今日のイメージ)";
+const APP_VERSION = "1.4(リラのロゴ)";
 
 const app = document.getElementById("app");
 const configured = /^https:\/\/[^\s]+\.supabase\.co/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
@@ -382,6 +382,23 @@ function route() {
 
 /* ---------- ログイン ---------- */
 
+// ログイン画面のロゴ(アイコンと、筆記体の Lila)
+function logo() {
+  const spread = (text, cls) => h("div", { class: "logo-line " + cls, "aria-hidden": "true" }, Array.from(text).map((c) => h("span", {}, c)));
+  const star = document.createElementNS(SVG_NS, "svg");
+  for (const [k, v] of Object.entries({ viewBox: "0 0 40 68", width: "18", height: "31", "aria-hidden": "true" })) star.setAttribute(k, v);
+  const sp = document.createElementNS(SVG_NS, "path");
+  sp.setAttribute("d", "M20,2 Q21.44,31.44 38,34 Q21.44,36.56 20,66 Q18.56,36.56 2,34 Q18.56,31.44 20,2 Z");
+  sp.setAttribute("fill", "#f1d480");
+  star.append(sp);
+  return h("div", { class: "logo" },
+    h("img", { class: "logo-icon", src: "apple-touch-icon.png", alt: "" }),
+    h("div", { class: "logo-word" },
+      spread("高次元SNSリラ", "l1"),
+      h("h1", { class: "logo-name", "aria-label": "高次元SNS リラ 声と色でつながる場所" }, "Lila", star),
+      spread("声と色でつながる場所", "l2")));
+}
+
 function showAuth(mode = "login", msg = "") {
   S.view = { name: "auth" };
   const isSignup = mode === "signup";
@@ -426,9 +443,7 @@ function showAuth(mode = "login", msg = "") {
 
   setScreen(h("div", { class: "screen" },
     h("div", { class: "auth" },
-      h("div", { class: "orb" }),
-      h("h1", {}, "高次元SNS"),
-      h("p", { class: "tagline" }, "声とイメージでつながる場所"),
+      logo(),
       form,
       h("button", { class: "link", type: "button", onclick: () => showAuth(isSignup ? "login" : "signup") },
         isSignup ? "すでに登録している方はこちら" : "はじめての方はこちら"))));

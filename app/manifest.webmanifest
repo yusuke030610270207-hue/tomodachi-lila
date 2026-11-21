@@ -1,7 +1,7 @@
 {
-  "name": "高次元SNS",
-  "short_name": "高次元",
-  "description": "声とイメージでつながる、身内のためのSNS",
+  "name": "高次元SNS リラ",
+  "short_name": "リラ",
+  "description": "声と色でつながる、身内のためのSNS",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
